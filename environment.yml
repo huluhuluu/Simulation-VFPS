@@ -1,4 +1,4 @@
-name: pyvertical-dev
+name: fvps
 channels:
   - conda-forge
   - pytorch

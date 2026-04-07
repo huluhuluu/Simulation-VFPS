@@ -83,8 +83,11 @@ class DiscreteSplitNN:
         counter = 0
         for owner in self.data_owners:
             if self.selected[owner.id]:
+                # 动态获取输入形状
+                data = data_pointer[owner.id]
+                input_size = data.shape[-1] * data.shape[-2] if len(data.shape) == 4 else data.shape[-1]
                 remote_outputs.append(
-                    self.models[owner.id](data_pointer[owner.id].reshape([-1, 7*28])).move(self.server)
+                    self.models[owner.id](data.reshape([-1, input_size])).move(self.server)
                 )
                 delays.append(max(random.gauss(MEAN_DELAY, STD_DELAY), 0))
 
@@ -129,7 +132,8 @@ class DiscreteSplitNN:
         
         #calculate loss
         criterion = nn.NLLLoss()
-        loss = criterion(pred, target.reshape(-1, 1)[0])
+        # 修复：直接使用 target，不需要 reshape(-1, 1)[0]
+        loss = criterion(pred, target)
         
         #backpropagate
         loss.backward()
@@ -146,7 +150,7 @@ class DiscreteSplitNN:
         
         #calculate loss
         criterion = nn.NLLLoss()
-        loss = criterion(pred, target.reshape(-1, 1)[0])
+        loss = criterion(pred, target)
         
         return loss.detach().get()
 
@@ -178,8 +182,9 @@ class DiscreteSplitNN:
 
         mi = 0
         for id1, data_ptr, target in distributed_subdata:
-            self.Nq[target.item()] = len(self.class_data[target.item()])
-            sorted_distances = get_sorted_distances(id1, self.class_data[target.item()], aggregate_distances)
+            # 使用 target 直接作为 key，与 fagin_utils.py 保持一致
+            self.Nq[target] = len(self.class_data[target])
+            sorted_distances = get_sorted_distances(id1, self.class_data[target], aggregate_distances)
            
             self.mq[id1] = len([0 for id2, _, _ in distributed_subdata if (
                 len(sorted_distances) > 0
@@ -187,7 +192,7 @@ class DiscreteSplitNN:
                 aggregate_distances[id1, id2] < sorted_distances[min(self.k, len(sorted_distances)-1)]
             )])
             if self.mq[id1] > 0:
-                mi += digamma(self.N) - digamma(self.Nq[target.item()]) + digamma(self.k) - digamma(self.mq[id1])
+                mi += digamma(self.N) - digamma(self.Nq[target]) + digamma(self.k) - digamma(self.mq[id1])
 
         return mi / self.Q
     
