@@ -2,8 +2,8 @@
 EPOCHS = 50
 SUBSET_UPDATE_PROB = 0.2
 PADDING_METHOD = "zeros"
-LEARNING_RATE = 0.01
-BATCH_SIZE = 64
+LEARNING_RATE = 0.001
+BATCH_SIZE = 256
 N_CLIENTS = 10   # 客户端总数
 N_SELECTED = 6   # 每轮选择的客户端数量 (60%参与率)
 N_TESTS = 5      # 组测试次数

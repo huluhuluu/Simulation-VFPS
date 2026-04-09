@@ -62,42 +62,27 @@ class MultiClientNet(nn.Module):
     """
     客户端网络 - 多客户端垂直分割版本
     
-    每个客户端处理图像的一部分行
+    参考 vflweight 的设计：
+    - 垂直分割按列进行，每个客户端收到 28x(width) 的图像
+    - 直接使用完整的 ResNet18
+    - 输入: (batch, 28, width) 或 (batch, width*28)
     """
     
-    def __init__(self, input_rows=7, feature_dim=256):
+    def __init__(self, input_width=4, feature_dim=256):
         super(MultiClientNet, self).__init__()
-        self.input_rows = input_rows
+        self.input_width = input_width
         self.feature_dim = feature_dim
         
-        # 适配小图像片段的 CNN
-        self.features = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-        )
-        self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(128, feature_dim)
+        # 直接使用完整的 ResNet18
+        from .resnet import ResNet, ResidualBlock
+        self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=1)
     
     def forward(self, x):
-        # 输入: (batch, 1, 7, 28) 或 (batch, 7, 28) 或 (batch, 196)
-        if x.dim() == 2:
-            # (batch, 196) -> (batch, 1, 7, 28)
-            x = x.view(x.shape[0], 1, self.input_rows, -1)
-        elif x.dim() == 3:
-            # (batch, 7, 28) -> (batch, 1, 7, 28)
-            x = x.unsqueeze(1)
-        
-        x = self.features(x)  # -> (batch, 128, 7, 28)
-        x = self.pool(x)      # -> (batch, 128, 1, 1)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)        # -> (batch, feature_dim)
+        # 参考 vflweight 的处理方式
+        # 输入: (batch, 28, width) 或 (batch, 28*width) 
+        # 输出: (batch, 1, 28, width) 供 ResNet18 使用
+        x = x.view(x.shape[0], 1, 28, -1)
+        x = self.resnet18(x)
         return x
 
 
@@ -173,49 +158,40 @@ class SplitResNet18:
         return ClientModelClass, ServerModelClass
     
     @staticmethod
-    def create_multi_client_models(n_clients=4, input_rows=7, feature_dim=256, 
+    def create_multi_client_models(n_clients=4, input_width=4, feature_dim=256, 
                                     hidden_dim=64, num_classes=10):
         """
         创建多客户端垂直分割模型
         
+        参考 vflweight 的设计：
+        - 垂直分割按列进行
+        - 每个客户端收到 28x(width) 的图像
+        - 高度固定为 28，宽度可变
+        
         Args:
             n_clients: 客户端数量
-            input_rows: 每个客户端处理的图像行数 (28 / n_clients)
+            input_width: 每个客户端处理的图像宽度 (28 / n_clients 左右，可能有重叠)
             feature_dim: 每个客户端的特征维度
             hidden_dim: 服务器隐藏层维度
             num_classes: 分类数
         
         Returns:
-            (ClientModelClass, ServerModelClass) 元组 - 返回类而不是实例
+            (ClientModelClass, ServerModelClass) 元组
         """
-        # 返回类，让用户可以实例化多次
+        from .resnet import ResNet, ResidualBlock
+        
         class ClientModelClass(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.features = nn.Sequential(
-                    nn.Conv2d(1, 32, kernel_size=3, padding=1),
-                    nn.BatchNorm2d(32),
-                    nn.ReLU(),
-                    nn.Conv2d(32, 64, kernel_size=3, padding=1),
-                    nn.BatchNorm2d(64),
-                    nn.ReLU(),
-                    nn.Conv2d(64, 128, kernel_size=3, padding=1),
-                    nn.BatchNorm2d(128),
-                    nn.ReLU(),
-                )
-                self.pool = nn.AdaptiveAvgPool2d((1, 1))
-                self.fc = nn.Linear(128, feature_dim)
-                self.input_rows = input_rows
+                self.input_width = input_width
+                # 直接使用 ResNet18
+                self.resnet18 = ResNet(ResidualBlock, num_classes=feature_dim, in_channel=1)
             
             def forward(self, x):
-                if x.dim() == 2:
-                    x = x.view(x.shape[0], 1, self.input_rows, -1)
-                elif x.dim() == 3:
-                    x = x.unsqueeze(1)
-                x = self.features(x)
-                x = self.pool(x)
-                x = torch.flatten(x, 1)
-                x = self.fc(x)
+                # 参考 vflweight: x.view(x.shape[0], 1, 28, -1)
+                # 输入: (batch, 28*width) -> 输出: (batch, 1, 28, width)
+                x = x.view(x.shape[0], 1, 28, -1)
+                x = self.resnet18(x)
                 return x
         
         class ServerModelClass(nn.Module):
@@ -225,14 +201,12 @@ class SplitResNet18:
                 self.fc1 = nn.Linear(total_feature_dim, hidden_dim)
                 self.fc2 = nn.Linear(hidden_dim, num_classes)
             
-            def forward(self, *client_features):
-                x = torch.cat(client_features, dim=1)
+            def forward(self, x):
                 x = F.relu(self.fc1(x))
                 x = self.fc2(x)
-                # 添加 LogSoftmax 以配合 NLLLoss
                 return F.log_softmax(x, dim=1)
-                # 添加 LogSoftmax 以配合 NLLLoss
-                return F.log_softmax(x, dim=1)
+        
+        return ClientModelClass, ServerModelClass
         
         return ClientModelClass, ServerModelClass
 

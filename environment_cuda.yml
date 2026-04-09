@@ -1,0 +1,19 @@
+name: vfps-gpu
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.11
+  - pytorch
+  - torchvision
+  - numpy>=1.20
+  - pandas>=1.0.0
+  - pip>=23
+  - pip:
+      - pytest
+      - matplotlib
+      - phe
+      - tenseal
+      - openmined.psi
+      - pysyft
