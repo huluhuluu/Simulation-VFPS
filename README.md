@@ -1,4 +1,4 @@
-# Dynamic-VFPS
+# Simulation-VFPS
 
 A simulation code for paper **VF-PS: How to Select Important Participants in Vertical Federated Learning, Efficiently and Securely?**
 
