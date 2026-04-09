@@ -548,7 +548,7 @@ class SplitNN:
         2. 服务器本地进行 n_tests 次组测试（无额外通信）
         
         Returns:
-            (scores, mi_comm_time): 客户端分数和通信时间
+            (scores, mi_comm_time, mi_comp_time): 客户端分数和通信时间与计算时间
         """
         self.scores = {f"client_{i}": 0.0 for i in range(self.config.n_clients)}
         
@@ -568,6 +568,7 @@ class SplitNN:
         # 总通信时间 = 所有 batch 的通信时间之和
         mi_comm_time = sum(batch_comm_times)
         
+        mi_start = time.time()
         # 2. 本地进行 n_tests 次组测试（无需额外通信）
         for _ in range(n_tests):
             # 随机生成测试组
@@ -592,7 +593,7 @@ class SplitNN:
         self.scores = {k: v / n_tests for k, v in self.scores.items()}
         self._select_top_clients()
         
-        return self.scores, mi_comm_time
+        return self.scores, mi_comm_time, time.time() - mi_start
     
     def _generate_test_group(self, p=0.5):
         """随机生成测试组"""
@@ -790,14 +791,11 @@ def main():
         print(f"  MI batches: {n_mi_batches}")
         
         # 2. 用所有 MI 数据进行组测试选择客户端
-        mi_start = time.time()
-        scores, mi_comm_time = splitnn.group_testing(mi_data, config.n_tests)
-        mi_total_time = time.time() - mi_start
-        mi_compute_time = mi_total_time - mi_comm_time  # 计算时间 = 总时间 - 通信时间
+        scores, mi_comm_time, mi_compute_time = splitnn.group_testing(mi_data, config.n_tests)
         
         selected = [k for k, v in splitnn.selected.items() if v]
         print(f"  Selected clients: {selected}")
-        print(f"  MI total time: {mi_total_time:.2f}s")
+        print(f"  MI total time: {mi_compute_time + mi_comm_time:.2f}s")
         print(f"  MI compute time: {mi_compute_time:.2f}s")
         print(f"  MI comm time: {mi_comm_time:.4f}s ({n_mi_batches} batches)")
         print(f"\n  Clients fixed for all training steps")
@@ -821,11 +819,8 @@ def main():
         for _, data_ptr, label in distributor.subdata:
             # Dynamic 模式：每个 step 前进行客户端选择
             if args.mi_mode == 'dynamic':
-                mi_start = time.time()
                 estimate_data = distributor.generate_estimate_subdata(config.estimate_samples)
-                scores, mi_comm_time = splitnn.group_testing(estimate_data, config.n_tests)
-                mi_total_time = time.time() - mi_start
-                mi_compute_time = mi_total_time - mi_comm_time
+                scores, mi_comm_time, mi_compute_time = splitnn.group_testing(estimate_data, config.n_tests)
                 
                 total_mi_compute_time += mi_compute_time
                 total_mi_comm_time += mi_comm_time
