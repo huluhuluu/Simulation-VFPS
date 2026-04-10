@@ -152,10 +152,9 @@ cython_debug/<Paste>
 ## Project-specific stuff
 MNIST/
 
-# Ignore data
-# data/synthea/*
-# !data/synthea/.gitkeep
-data/*
+# Ignore all dataset files
+datasets/
+data/
 data/synthea/*
 
 examples/experimental/*

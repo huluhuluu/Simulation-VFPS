@@ -27,7 +27,7 @@ def evaluate(splitnn: SplitNN, test_set: List[Tuple[Dict[str, torch.Tensor], tor
         for data_ptr, label in test_set:
             label = label.to(device)
             # Ignore communication time and outputs
-        pred, _, _ = splitnn.predict(data_ptr)
+            pred, _, _ = splitnn.predict(data_ptr)
             
             pred_labels = pred.argmax(dim=1).cpu().numpy()
             true_labels = label.cpu().numpy()

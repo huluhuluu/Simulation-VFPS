@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     # MI estimation parameters
     parser.add_argument('--n-tests', type=int, default=5, help='Number of group tests')
     parser.add_argument('--k-nn', type=int, default=3, help='KNN k value')
-    parser.add_argument('--mi-mode', type=str, default='dynamic',
+    parser.add_argument('--mi-mode', type=str, default='static',
                        choices=['dynamic', 'static'],
                        help='MI mode: dynamic (every step) or static (once at start)')
     parser.add_argument('--mi-ratio', type=float, default=1/9,
